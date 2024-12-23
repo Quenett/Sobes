@@ -1,0 +1,50 @@
+--Первоначальная очистка уже имеющихся записей
+DELETE FROM `categories` WHERE categories.id NOT IN (SELECT products.category_id FROM `products`);
+DELETE FROM `products` WHERE products.id NOT IN (SELECT availabilities.product_id FROM `availabilities`);
+DELETE FROM `stocks` WHERE stocks.id NOT IN (SELECT availabilities.stock_id FROM `availabilities`);
+DELETE FROM `availabilities` WHERE amount = 0;
+
+-- Создание триггера для удаления всех товаров которые закончились
+DELIMITER $$
+
+CREATE TRIGGER after_update_availability
+AFTER UPDATE ON Availabilities
+FOR EACH ROW
+BEGIN
+    DECLARE remaining_stock INT;
+    DECLARE all_product INT;
+    DECLARE remaining_category INT;
+    DECLARE find_category INT;
+    DECLARE find_products_id INT;
+
+    IF NEW.Amount <> OLD.Amount THEN
+        IF NEW.Amount = 0 THEN
+            SELECT COUNT(*) INTO remaining_stock FROM Availabilities
+            WHERE availabilities.stock_id = NEW.stock_id AND availabilities.id <> NEW.id;
+
+            IF remaining_stock = 0 THEN
+            	DELETE FROM stocks WHERE id = NEW.stock_id;
+            END IF;
+
+            SELECT COUNT(*) INTO all_product FROM availabilities
+            WHERE availabilities.product_id = NEW.product_id AND availabilities.id <> NEW.id;
+
+            IF all_product = 0 THEN
+                    SELECT products.category_id, products.id INTO find_category, find_products_id FROM products
+                    WHERE NEW.product_id = products.id;
+
+                    SELECT COUNT(*) INTO remaining_category FROM products
+                    WHERE products.category_id = find_category AND products.id <> find_products_id;
+
+                    IF remaining_category = 0 THEN
+                        DELETE FROM categories WHERE id = find_category;
+                    END IF;
+
+            	DELETE FROM products WHERE id = NEW.product_id;
+			END IF;
+            DELETE FROM availabilities WHERE availabilities.id = NEW.id;
+        END IF;
+    END IF;
+END$$
+
+DELIMITER ;
